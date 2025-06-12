@@ -155,7 +155,7 @@ def prepare_model_and_optimizer(args):
         0.1
     )
 
-    ema_model: nn.Module = copy.deepcopy(model.module)
+    ema_model: nn.Module = copy.deepcopy(model)
     for param in ema_model.parameters():
         param.requires_grad = False
 
@@ -397,7 +397,7 @@ def training_epoch(model, ema_model, train_dataloader, valid_dataloader, optimiz
         with torch.no_grad():
 
             # EMA update
-            for param_q, param_k in zip(model.module.parameters(), ema_model.parameters()):
+            for param_q, param_k in zip(model.parameters(), ema_model.parameters()):
                 param_k.data.mul_(args.ema_decay).add_((1.0 - args.ema_decay) * param_q.detach().data)
 
             # be careful here, not all GPUs work with the same training objective
@@ -415,8 +415,6 @@ def training_epoch(model, ema_model, train_dataloader, valid_dataloader, optimiz
                 causal_accuracy = total_accuracy.item()
                 masked_epoch = 0
                 causal_epoch = epoch
-
-            # accumulate the metrics across GPUs
 
         # log the metrics
         wandb.log(
@@ -541,8 +539,8 @@ def training(model, ema_model, masked_train_dataloader, causal_train_dataloader,
 
             # add the tracked metrics (for gradient accumulation)
             total_loss += loss.detach() * weight
-            total_masked_loss += masked_loss.detach() * weight
-            total_causal_loss += causal_loss.detach() * weight
+            total_masked_loss += (masked_loss.detach() if masked_loss > 0.0 else 0.0) * weight
+            total_causal_loss += (causal_loss.detach() if causal_loss > 0.0 else 0.0) * weight
             total_accuracy += accuracy * weight
             total_masked_accuracy += masked_accuracy * weight
             total_causal_accuracy += causal_accuracy * weight
@@ -560,7 +558,7 @@ def training(model, ema_model, masked_train_dataloader, causal_train_dataloader,
         with torch.no_grad():
 
             # EMA update
-            for param_q, param_k in zip(model.module.parameters(), ema_model.parameters()):
+            for param_q, param_k in zip(model.parameters(), ema_model.parameters()):
                 param_k.data.mul_(args.ema_decay).add_((1.0 - args.ema_decay) * param_q.detach().data)
 
         # log the metrics
